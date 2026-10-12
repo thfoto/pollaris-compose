@@ -1,0 +1,112 @@
+name: pollaris
+
+services:
+
+  database:
+    image: postgres:15-alpine
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    volumes:
+      - pollaris-db:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+
+  migrate:
+    image: pollaris-php:8.4
+    restart: "no"
+
+    user: "www-data"
+
+    env_file:
+      - .env
+
+    working_dir: /var/html/pollaris
+
+    volumes:
+      - ./pollaris-source:/var/html/pollaris
+
+    depends_on:
+      database:
+        condition: service_healthy
+
+    command:
+      - php
+      - bin/console
+      - doctrine:migrations:migrate
+      - --no-interaction
+
+
+  php:
+    image: pollaris-php:8.4
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    working_dir: /var/html/pollaris
+
+    volumes:
+      - ./pollaris-source:/var/html/pollaris
+
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+
+  worker:
+    image: pollaris-php:8.4
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    working_dir: /var/html/pollaris
+
+    volumes:
+      - ./pollaris-source:/var/html/pollaris
+
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+    command:
+      - php
+      - bin/console
+      - messenger:consume
+      - async
+      - scheduler_default
+      - -vv
+
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:3010:80"
+
+    volumes:
+      - ./pollaris-source:/var/html/pollaris:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+    depends_on:
+      php:
+        condition: service_started
+
+
+volumes:
+
+  pollaris-db:

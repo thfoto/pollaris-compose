@@ -1,0 +1,7 @@
+.env
+pollaris-source/vendor/
+pollaris-source/node_modules/
+pollaris-source/var/
+
+pollaris-source/
+.env
